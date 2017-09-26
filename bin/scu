@@ -1,0 +1,96 @@
+#!/bin/bash
+
+#
+# SSH Connection Utility (SCU)
+# - ssh connection utility with pre-defined hosts list
+#
+# You can run this script without parameters to get usage instructions - all you need will be displayed and no harmful activities will be done.
+#
+# Author: keir@keir.ru
+#
+# This project is licensed under GPL 3 License - see [https://www.gnu.org/licenses/gpl-3.0.en.html]
+#
+
+declare -A sshhostlist;
+HOSTSFILE="$HOME/.scurc";
+
+echo "";
+echo -e "\tSSH Connection Utility with predefined hosts list";
+echo "";
+
+# Hosts file check part.
+# If file doesn't exists it can be generated when 'init' param is set.
+if [[ -f $HOSTSFILE ]]; then
+ source $HOSTSFILE
+else
+ if [[ $1 = "init" ]]; then
+  # At next step example config file will be generated
+  echo -e "# Array entry format:\n# [host-useful-name]=\"username server.address.or.ip ssh-port-if-not-default\"\n\nsshhostlist=(\n\t[example-host-one]=\"sshuser host-one.domain.local\"\n\t[example-host-two]=\"root host-two.domain.local 2222\"\n\t[example-line-one]=\"games server.domain.local 22\"\n);" > $HOSTSFILE
+  if [[ $? -eq 0 ]]; then
+   echo "Example config file $HOSTSFILE generated.";
+   echo "Edit it as you wish.";
+   echo "";
+  fi
+  exit 0;
+ fi
+ echo "File with list of ssh hosts ($HOSTSFILE) not found. No way to live.";
+ echo "(!) You can initialize example file - run '$0 init' to do that.";
+ echo "";
+ exit 1;
+fi
+
+# Indexing hosts list. After that connection by host number will be available.
+declare -A ARRINDEX;
+ARRITER=1;
+for value in "${!sshhostlist[@]}"; do
+ ARRINDEX[$value]=$ARRITER;
+ let ARRITER=ARRITER+1;
+done
+
+# Connecting to host if exists
+CONHOST=$1
+for value in "${!sshhostlist[@]}"; do
+ if [[ $value = $CONHOST ]] || [[ ${ARRINDEX[$value]} = $CONHOST ]]; then
+  USERNAME=$(echo -n ${sshhostlist[$value]}|awk '{ print $1 }');
+  ADDRESS=$(echo -n ${sshhostlist[$value]}|awk '{ print $2 }');
+  PORT=$(echo -n ${sshhostlist[$value]}|awk -v ORS="" '{ print $3; if ($3=="") printf "%s","22" }');
+  echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT'...";
+  echo "";
+  ssh $USERNAME@$ADDRESS -p $PORT
+  exit 0;
+ fi
+done
+
+#
+# Usage information and hosts list
+# which will be displayed if no valid host was choosen
+#
+ echo -e "\t\tUsage: $0 <host number|host name>";
+ echo "";
+ echo "Available hosts:";
+ COUNTER=1;
+ for value in "${!sshhostlist[@]}"; do
+  value="${ARRINDEX[$value]}: $value";
+  if [[ ${#value} -gt 7 ]]; then
+   if [[ ${#value} -gt 15 ]]; then
+    RES="$value\t";
+   else
+    RES="$value\t\t";
+   fi
+  else
+   RES="$value\t\t\t";
+  fi
+  if [[ ! -z $CONHOST ]]; then
+   [[ $RES =~ $CONHOST ]] || continue;
+   echo -ne "$RES";
+  else
+   echo -ne "$RES";
+  fi
+  let COUNTER=COUNTER+1;
+  if [[ $COUNTER -gt 3 ]]; then
+   echo "";
+   COUNTER=1;
+  fi
+ done
+ echo "";
+ echo "";
