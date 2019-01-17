@@ -94,3 +94,9 @@ done
  done
  echo "";
  echo "";
+ if [ ! -z $CONHOST ]; then
+  echo -n "Enter host number / host name to connect: "
+  read input
+  $0 $input
+  exit 0;
+ fi
