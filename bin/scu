@@ -69,6 +69,7 @@ done
  echo "";
  echo "Available hosts:";
  COUNTER=1;
+ COUNTER2=1;
  for value in "${!sshhostlist[@]}"; do
   value="${ARRINDEX[$value]}: $value";
   if [[ ${#value} -gt 7 ]]; then
@@ -87,14 +88,18 @@ done
    echo -ne "$RES";
   fi
   let COUNTER=COUNTER+1;
+  let COUNTER2=COUNTER2+1;
   if [[ $COUNTER -gt 3 ]]; then
    echo "";
    COUNTER=1;
   fi
  done
  echo "";
+ if [ ! -z $CONHOST ] && [ $COUNTER2 -eq 1 ]; then
+  echo "There is no host to connect with name you wrote...";
+ fi
  echo "";
- if [ ! -z $CONHOST ]; then
+ if [ ! -z $CONHOST ] && [ $COUNTER2 -gt 1 ]; then
   echo -n "Enter host number / host name to connect: "
   read input
   $0 $input
