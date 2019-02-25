@@ -71,6 +71,7 @@ done
  COUNTER=1;
  COUNTER2=1;
  for value in "${!sshhostlist[@]}"; do
+  name="$value";
   value="${ARRINDEX[$value]}: $value";
   if [[ ${#value} -gt 7 ]]; then
    if [[ ${#value} -gt 15 ]]; then
@@ -83,6 +84,7 @@ done
   fi
   if [[ ! -z $CONHOST ]]; then
    [[ $RES =~ $CONHOST ]] || continue;
+   MATCHVALUE="$name";
    echo -ne "$RES";
   else
    echo -ne "$RES";
@@ -95,6 +97,11 @@ done
   fi
  done
  echo "";
+ if [ $COUNTER2 -eq 2 ] && [ ! -z $MATCHVALUE ]; then
+  echo "Connecting to only one matched host $MATCHVALUE...";
+  $0 $MATCHVALUE;
+  exit 0;
+ fi
  if [ ! -z $CONHOST ] && [ $COUNTER2 -eq 1 ]; then
   echo "There is no host to connect with name you wrote...";
  fi
