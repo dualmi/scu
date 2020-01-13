@@ -25,7 +25,7 @@ if [[ -f $HOSTSFILE ]]; then
 else
  if [[ $1 = "init" ]]; then
   # At next step example config file will be generated
-  echo -e "# Array entry format:\n# [host-useful-name]=\"username server.address.or.ip ssh-port-if-not-default\"\n\nsshhostlist=(\n\t[example-host-one]=\"sshuser host-one.domain.local\"\n\t[example-host-two]=\"root host-two.domain.local 2222\"\n\t[example-line-one]=\"games server.domain.local 22\"\n);" > $HOSTSFILE
+  echo -e "# Array entry format:\n# [host-useful-name]=\"username server.address.or.ip ssh-port-if-not-default id_rsa_key_path-if-not-.ssh/id_rsa\"\n\nsshhostlist=(\n\t[example-host-one]=\"sshuser host-one.domain.local\"\n\t[example-host-two]=\"root host-two.domain.local 2222\"\n\t[example-line-one]=\"games server.domain.local 22\"\n\t[example-ext-host]=\"admin h24.contoso.com 22022 ~/.ssh/id_rsa_for_contoso\"\n);" > $HOSTSFILE
   if [[ $? -eq 0 ]]; then
    echo "Example config file $HOSTSFILE generated.";
    echo "Edit it as you wish.";
@@ -54,9 +54,16 @@ for value in "${!sshhostlist[@]}"; do
   USERNAME=$(echo -n ${sshhostlist[$value]}|awk '{ print $1 }');
   ADDRESS=$(echo -n ${sshhostlist[$value]}|awk '{ print $2 }');
   PORT=$(echo -n ${sshhostlist[$value]}|awk -v ORS="" '{ print $3; if ($3=="") printf "%s","22" }');
-  echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT'...";
+  PRIVKEY=$(echo -n ${sshhostlist[$value]}|awk -v ORS="" -v HOME="$HOME" '{ print $4; if ($4=="") printf HOME "%s","/.ssh/id_rsa" }');
+  # Tilde expansion didn't work in IF statement if quoted in variable, so convert it to HOME here
+  PRIVKEY=$(echo $PRIVKEY | sed -e "s,^~,$HOME,");
+  echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT' with key '$PRIVKEY'...";
   echo "";
-  ssh $USERNAME@$ADDRESS -p $PORT
+  if [[ ! -r "$PRIVKEY" ]]; then
+  	echo "Private key $PRIVKEY not accessible. No way to live, exiting..."
+  	exit 1
+  fi
+  ssh $USERNAME@$ADDRESS -p $PORT -i $PRIVKEY
   exit 0;
  fi
 done
