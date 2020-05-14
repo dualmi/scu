@@ -57,13 +57,15 @@ for value in "${!sshhostlist[@]}"; do
   PRIVKEY=$(echo -n ${sshhostlist[$value]}|awk -v ORS="" -v HOME="$HOME" '{ print $4; if ($4=="") printf HOME "%s","/.ssh/id_rsa" }');
   # Tilde expansion didn't work in IF statement if quoted in variable, so convert it to HOME here
   PRIVKEY=$(echo $PRIVKEY | sed -e "s,^~,$HOME,");
-  echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT' with key '$PRIVKEY'...";
-  echo "";
-  if [[ ! -r "$PRIVKEY" ]]; then
-  	echo "Private key $PRIVKEY not accessible. No way to live, exiting..."
-  	exit 1
+  if [[ -r $PRIVKEY ]]; then
+    echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT' with key '$PRIVKEY'...";
+    PRIVKEY="-i $PRIVKEY"
+  else
+    echo "Connecting to $value with user '$USERNAME', address '$ADDRESS' and port '$PORT' without key...";
+    PRIVKEY=''
   fi
-  ssh $USERNAME@$ADDRESS -p $PORT -i $PRIVKEY
+  echo "";
+  ssh $USERNAME@$ADDRESS -p $PORT $PRIVKEY
   exit 0;
  fi
 done
