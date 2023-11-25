@@ -96,7 +96,7 @@ if [[ $ansiblepath ]]; then
           | [{.key: (.value.ansible_user // $company.vars.ansible_user // "root")
            + " " + .value.ansible_host + " " + (.value.ansible_port // $company.vars.ansible_port // 22)
            + " " + (.value.ansible_ssh_common_args // $company.vars.ansible_ssh_common_args // "")}]
-          | .[]' $inventory | sed -e 's,"$,,;s,",,;s,\\",",g' | grep -E -v '^#'
+          | .[]' $inventory | sed -e 's,"$,,;s,",,;s,\\",",g;s,\x27,,g' | grep -E -v '^#'
         ); do
           sshhostlist["${line%%:*}"]=${line#*:}
       done
@@ -123,6 +123,8 @@ for sshhost in "${!sshhostlist[@]}"; do
     ADDRESS=$(echo -n "${sshhostlist[$sshhost]}"|awk '{ print $2 }');
     PORT=$(echo -n "${sshhostlist[$sshhost]}"|awk -v ORS="" '{ print $3; if ($3=="") printf "%s","22" }');
     SSHARGS=$(echo -n "${sshhostlist[$sshhost]}"|awk '{ if ($4) print substr($0, index($0,$4)) }');
+    echo ${sshhostlist[$sshhost]}
+    echo "ssh -p $PORT $SSHARGS $USERNAME@$ADDRESS"
     echo -n "Connecting to $sshhost with command: ";
     $_bash -x -c "ssh -p $PORT $SSHARGS $USERNAME@$ADDRESS"
     exit 0;
