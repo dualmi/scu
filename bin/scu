@@ -92,7 +92,7 @@ if [[ $ansiblepath ]]; then
         yq -r '.all.children.* as $company
           | $company.children.*.*
           | to_entries
-          | .[]
+          | select(.[].value | type=="!!map").[]
           | [{.key: (.value.ansible_user // $company.vars.ansible_user // "root")
            + " " + .value.ansible_host + " " + (.value.ansible_port // $company.vars.ansible_port // 22)
            + " " + (.value.ansible_ssh_common_args // $company.vars.ansible_ssh_common_args // "")}]
