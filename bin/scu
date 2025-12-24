@@ -10,7 +10,7 @@
 
 declare -A sshhostlist;
 hosts_file="$HOME/.scurc";
-_bash=$(which bash)
+host_connect=$1
 
 echo -e "\n\tSSH Connection Utility with predefined hosts list\n";
 
@@ -96,7 +96,7 @@ if [[ $ansiblepath ]]; then
           | [{.key: (.value.ansible_user // $company.vars.ansible_user // "root")
            + " " + .value.ansible_host + " " + (.value.ansible_port // $company.vars.ansible_port // 22)
            + " " + (.value.ansible_ssh_common_args // $company.vars.ansible_ssh_common_args // "")}]
-          | .[]' $inventory | sed -e 's,"$,,;s,",,;s,\\",",g;s,\x27,,g' | grep -E -v '^#'
+          | .[]' $inventory | grep -E -v '^#' | awk '{ gsub(/^"/, "", $2); gsub(/"$/, "", $NF); print $0; }'
         ); do
           sshhostlist["${line%%:*}"]=${line#*:}
       done
@@ -115,19 +115,23 @@ for value in "${!sshhostlist[@]}"; do
   array_i=$(( array_i+1 ))
 done
 
+# connect to selected host
+function sshconnect() {
+  local host_to_connect=$1
+  for sshhost in "${!sshhostlist[@]}"; do
+    if [[ $sshhost = "$host_to_connect" ]] || [[ ${array_index[$sshhost]} = "$host_to_connect" ]]; then
+      read -r USERNAME ADDRESS PORT SSHARGS <<<"${sshhostlist[$sshhost]}"
+      PORT=${PORT:-22}
+      SSHARGS=${SSHARGS//\\\"/\"}
+      echo -n "Connecting to $sshhost with command: ";
+      bash -x -c "ssh -p $(printf %q "$PORT") $SSHARGS $(printf %q "$USERNAME@$ADDRESS")"
+      exit 0;
+    fi
+  done
+}
+
 # Connecting to host if exists
-host_connect=$1
-for sshhost in "${!sshhostlist[@]}"; do
-  if [[ $sshhost = "$host_connect" ]] || [[ ${array_index[$sshhost]} = "$host_connect" ]]; then
-    USERNAME=$(echo -n "${sshhostlist[$sshhost]}"|awk '{ print $1 }');
-    ADDRESS=$(echo -n "${sshhostlist[$sshhost]}"|awk '{ print $2 }');
-    PORT=$(echo -n "${sshhostlist[$sshhost]}"|awk -v ORS="" '{ print $3; if ($3=="") printf "%s","22" }');
-    SSHARGS=$(echo -n "${sshhostlist[$sshhost]}"|awk '{ if ($4) print substr($0, index($0,$4)) }');
-    echo -n "Connecting to $sshhost with command: ";
-    $_bash -x -c "ssh -p $PORT $SSHARGS $USERNAME@$ADDRESS"
-    exit 0;
-  fi
-done
+sshconnect "$host_connect"
 
 #
 # Usage information and hosts list
@@ -144,10 +148,10 @@ for value in "${!sshhostlist[@]}"; do
     if [[ ${#value} -gt 15 ]]; then
       RES="$value\t";
     else
-      RES="$value\t\t";
+      RES="$value\t\t\t";
     fi
   else
-    RES="$value\t\t\t";
+    RES="$value\t\t\t\t";
   fi
   if [[ -n $host_connect ]]; then
     [[ $RES =~ $host_connect ]] || continue;
@@ -176,6 +180,6 @@ echo "";
 if [ -n "$host_connect" ] && [ $counter2 -gt 1 ]; then
   echo -n "Enter host number / host name to connect: "
   read -r input
-  $0 "$input"
+  sshconnect "$input"
   exit 0;
 fi
