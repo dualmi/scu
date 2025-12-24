@@ -96,7 +96,7 @@ if [[ $ansiblepath ]]; then
           | [{.key: (.value.ansible_user // $company.vars.ansible_user // "root")
            + " " + .value.ansible_host + " " + (.value.ansible_port // $company.vars.ansible_port // 22)
            + " " + (.value.ansible_ssh_common_args // $company.vars.ansible_ssh_common_args // "")}]
-          | .[]' $inventory | grep -E -v '^#' | awk '{ gsub(/^"/, "", $2); gsub(/"$/, "", $NF); print $0; }'
+          | .[]' $inventory | grep -E -v '^#' | awk '{ gsub(/^"|^'\''/, "", $2); gsub(/"$|'\''$/, "", $NF); print $0; }'
         ); do
           sshhostlist["${line%%:*}"]=${line#*:}
       done
