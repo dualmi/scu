@@ -7,17 +7,25 @@
 #
 # This project is licensed under GPL 3 License - see [https://www.gnu.org/licenses/gpl-3.0.en.html]
 #
+set -euo pipefail
+
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
+  echo "SCU requires bash >= 4.3" >&2
+  exit 1
+fi
 
 declare -A sshhostlist;
+: "${ansiblepath:=}"
+: "${netbox_hostname:=}"
 hosts_file="$HOME/.scurc";
-host_connect=$1
+host_connect="${1:-}"
 
 echo -e "\n\tSSH Connection Utility with predefined hosts list\n";
 
 # Hosts file check part.
 # If file doesn't exists it can be generated when 'init' param is set.
 if [[ -f $hosts_file ]]; then
-  # shellcheck source=.scurc
+  # shellcheck source=/dev/null
   source "$hosts_file"
 else
   if [[ $1 = "init" ]]; then
@@ -37,6 +45,10 @@ ansiblepath="
 $HOME/.scurc.yaml
 /wrong/file/name
 "
+
+# You can provide your Netbox schema://address here.
+# Also you should set a NETBOX_TOKEN variable, usually via "export NETBOX_TOKEN=..."
+#netbox_hostname="https://netbox.contoso.com/"
 
 sshhostlist=(
   # here is 4 examples to show how it will be shown in terminal
@@ -89,6 +101,7 @@ if [[ $ansiblepath ]]; then
       OLDIFS=$IFS
       IFS=$'\n'
       for line in $(
+        # shellcheck disable=SC2016
         yq -r '.all.children.* as $company
           | $company.children.*.*
           | to_entries
@@ -96,7 +109,7 @@ if [[ $ansiblepath ]]; then
           | [{.key: (.value.ansible_user // $company.vars.ansible_user // "root")
            + " " + .value.ansible_host + " " + (.value.ansible_port // $company.vars.ansible_port // 22)
            + " " + (.value.ansible_ssh_common_args // $company.vars.ansible_ssh_common_args // "")}]
-          | .[]' $inventory | grep -E -v '^#' | awk '{ gsub(/^"|^'\''/, "", $2); gsub(/"$|'\''$/, "", $NF); print $0; }'
+          | .[]' "$inventory" | grep -E -v '^#' | awk '{ gsub(/^"|^'\''/, "", $2); gsub(/"$|'\''$/, "", $NF); print $0; }'
         ); do
           sshhostlist["${line%%:*}"]=${line#*:}
       done
@@ -105,6 +118,101 @@ if [[ $ansiblepath ]]; then
       echo -e "\n! Path $inventory is set in ansiblepath variable, but file is not readable!\n! Either clear this or specify the correct path\n"
     fi
   done
+fi
+
+# Netbox inventory implementation
+if [[ $netbox_hostname ]]; then
+  : "${NETBOX_TOKEN:?Netbox Token must be provided or \"netbox_hostname\" variable should be removed from ${hosts_file} file. You can use \"export NETBOX_TOKEN=...\"}"
+
+  cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/scu"
+  cache_file="$cache_dir/netbox.cache.txt"
+  ts_file="$cache_dir/netbox.cache.ts"
+  lock_dir="$cache_dir/netbox.cache.lock"
+  mkdir -p "$cache_dir"
+
+  cache_load() {
+    [[ -s "$cache_file" ]] || return 1
+    while IFS= read -r line
+    do
+      sshhostlist["${line%%:*}"]=${line#*:}
+    done < "$cache_file"
+  }
+
+  cache_should_refresh() {
+    local now last=0
+    now=$(date +%s)
+    [[ -r "$ts_file" ]] && read -r last <"$ts_file" || true
+    [[ $((now - last)) -ge 60 ]]
+  }
+
+  cache_mark_refresh_attempt() {
+    date +%s >"$ts_file";
+  }
+
+  curl_netbox_request() {
+    local type="${1:-}"
+    # shellcheck disable=SC2089
+    local location=""
+    local outfile="${2:?Outfile must be provided during the function call}"
+
+    if [[ "$type" == "virtual_machines" ]]; then
+      location="/api/virtualization/virtual-machines/?limit=1000&include=primary_ip"
+    elif [[ "$type" == "devices" ]]; then
+      location="/api/dcim/devices/?limit=1000&include=primary_ip"
+    fi
+    # shellcheck disable=SC2086,SC2090
+    curl -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname}${location}" \
+      | jq -r '.results[]
+        | select(.primary_ip4.address != null)
+        | "\(.name):\(.config_context.ansible_user // "root" ) \(.primary_ip4.address | split("/")[0]) \(.config_context.ansible_port // 22 ) \(.config_context.ansible_ssh_common_args // "")"' | sed 's/[[:space:]]*$//' >> "$outfile" || return 1
+  }
+
+  cache_refresh_job() {
+    mkdir "$lock_dir" 2>/dev/null || return 0
+    trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT
+
+    local tmp
+    tmp="$(mktemp "$cache_dir/netbox.cache.XXXXXX")"
+
+    if curl_netbox_request virtual_machines "$tmp" && curl_netbox_request devices "$tmp"; then
+      if awk '
+          $0 ~ /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+[[:space:]]+([0-9]{1,3}\.){3}[0-9]{1,3}[[:space:]]+[0-9]+/ {
+            ok++
+          }
+          END {
+            exit(ok ? 0 : 1)
+          }
+        ' "$tmp"; then
+        mv -f "$tmp" "$cache_file"
+        return 0
+      fi
+    fi
+
+    # rm -f "$tmp"
+    return 1
+  }
+
+  cache_refresh_background() {
+    cache_mark_refresh_attempt
+    (
+      exec </dev/null >/dev/null 2>&1
+      cache_refresh_job
+    ) &
+    disown 2>/dev/null || true
+  }
+
+  if cache_load; then
+    : # sshhostlist loaded
+  else
+    cache_mark_refresh_attempt
+    if cache_refresh_job; then
+      cache_load || true
+    fi
+  fi
+
+  if [[ -s "$cache_file" ]] && cache_should_refresh; then
+    cache_refresh_background
+  fi
 fi
 
 # Indexing hosts list. After that connection by host number will be available.

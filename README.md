@@ -1,5 +1,10 @@
 # SSH Connection Utility (SCU)
-Utility which provides faster way to jump in to your remote host than regular 'ssh' using Ansible yaml inventory or own hosts list.
+Utility that provides faster way to jump to remote hosts than plain 'ssh' using Ansible yaml inventory, Netbox or a custom hosts list.
+
+List of host sources:
+- .scurc file with array of hosts
+- ansible inventory in .yaml format
+- Netbox IPAM/DCIM platform
 
 ### Prerequisites
 
@@ -51,6 +56,25 @@ all:
               ansible_ssh_common_args: '-o ProxyCommand="ssh -W %h:%p -q ssh-tunnel@10.10.2.2 -p 2222"'
 ```
 
+### Netbox
+
+To use NetBox as a host source you must specify a valid URL to your NetBox installation in the .scurc file:
+```
+netbox_hostname="https://netbox.example.com"
+```
+After that the NETBOX_TOKEN environment variable is required.
+You can provide it by exporting it in your shell: `export NETBOX_TOKEN=...`
+
+SCU can optionally read the following
+custom fields from the device or virtual machine `config_context`:
+
+- `.config_context.ansible_user`
+- `.config_context.ansible_port`
+- `.config_context.ansible_ssh_common_args`
+
+These fields are **optional** and are only applied when present.
+If a field is not defined, SCU falls back to its default behavior where is user - root, port - 22, args - empty.
+
 ### How to connect
 
 After you done with you hosts list there are three things you can do:
@@ -65,7 +89,7 @@ and you will see something like that:
 		Usage: /home/username/bin/scu <host number|host name>
 
 Available hosts:
-1: example-line-one	2: example-host-one	3: example-host-two	
+1: example-line-one	2: example-host-one	3: example-host-two
 
 ```
 
@@ -87,7 +111,7 @@ or
 		Usage: /home/username/bin/scu <host number|host name>
 
 Available hosts:
-2: example-host-one	3: example-host-two	
+2: example-host-one	3: example-host-two
 ```
 
 ## Other info
