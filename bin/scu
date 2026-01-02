@@ -17,6 +17,9 @@ fi
 declare -A sshhostlist;
 : "${ansiblepath:=}"
 : "${netbox_hostname:=}"
+: "${curl_connect_timeout:=3}"
+: "${netbox_listing_limit:=1000}"
+: "${netbox_cache_refresh_time:=300}"
 hosts_file="$HOME/.scurc";
 host_connect="${1:-}"
 
@@ -142,7 +145,7 @@ if [[ $netbox_hostname ]]; then
     local now last=0
     now=$(date +%s)
     [[ -r "$ts_file" ]] && read -r last <"$ts_file" || true
-    [[ $((now - last)) -ge 60 ]]
+    [[ $((now - last)) -ge "${netbox_cache_refresh_time}" ]]
   }
 
   cache_mark_refresh_attempt() {
@@ -151,17 +154,16 @@ if [[ $netbox_hostname ]]; then
 
   curl_netbox_request() {
     local type="${1:-}"
-    # shellcheck disable=SC2089
     local location=""
     local outfile="${2:?Outfile must be provided during the function call}"
 
     if [[ "$type" == "virtual_machines" ]]; then
-      location="/api/virtualization/virtual-machines/?limit=1000&include=primary_ip"
+      location="/api/virtualization/virtual-machines/?limit=${netbox_listing_limit}&include=primary_ip"
     elif [[ "$type" == "devices" ]]; then
-      location="/api/dcim/devices/?limit=1000&include=primary_ip"
+      location="/api/dcim/devices/?limit=${netbox_listing_limit}&include=primary_ip"
     fi
     # shellcheck disable=SC2086,SC2090
-    curl -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname}${location}" \
+    curl --connect-timeout ${curl_connect_timeout} -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname}${location}" \
       | jq -r '.results[]
         | select(.primary_ip4.address != null)
         | "\(.name):\(.config_context.ansible_user // "root" ) \(.primary_ip4.address | split("/")[0]) \(.config_context.ansible_port // 22 ) \(.config_context.ansible_ssh_common_args // "")"' | sed 's/[[:space:]]*$//' >> "$outfile" || return 1
@@ -176,7 +178,10 @@ if [[ $netbox_hostname ]]; then
 
     if curl_netbox_request virtual_machines "$tmp" && curl_netbox_request devices "$tmp"; then
       if awk '
-          $0 ~ /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+[[:space:]]+([0-9]{1,3}\.){3}[0-9]{1,3}[[:space:]]+[0-9]+/ {
+          $1 ~ /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+$/ &&
+          $2 ~ /^([0-9]+\.){3}[0-9]+$/ &&
+          $3 ~ /^[0-9]+$/
+          {
             ok++
           }
           END {
@@ -188,7 +193,7 @@ if [[ $netbox_hostname ]]; then
       fi
     fi
 
-    # rm -f "$tmp"
+    rm -f "$tmp"
     return 1
   }
 
