@@ -23,6 +23,21 @@ declare -A sshhostlist;
 hosts_file="$HOME/.scurc";
 host_connect="${1:-}"
 
+format_epoch() {
+  local ts="$1"
+
+  [[ -n "$ts" && "$ts" != 0 ]] || {
+    echo "unknown"
+    return
+  }
+
+  if date -r 0 >/dev/null 2>&1; then
+    date -r "$ts" "+%Y-%m-%d %H:%M:%S"
+  else
+    date --date="@$ts" "+%Y-%m-%d %H:%M:%S"
+  fi
+}
+
 echo -e "\n\tSSH Connection Utility with predefined hosts list\n";
 
 # Hosts file check part.
@@ -135,16 +150,23 @@ if [[ $netbox_hostname ]]; then
 
   cache_load() {
     [[ -s "$cache_file" ]] || return 1
+    echo "Loading Netbox cache from $(format_epoch "$(cache_refresh_time)")..."
     while IFS= read -r line
     do
       sshhostlist["${line%%:*}"]=${line#*:}
     done < "$cache_file"
   }
 
-  cache_should_refresh() {
-    local now last=0
-    now=$(date +%s)
+  cache_refresh_time() {
+    local last=0
     [[ -r "$ts_file" ]] && read -r last <"$ts_file" || true
+    echo -n "$last"
+  }
+
+  cache_should_refresh() {
+    local now last
+    now=$(date +%s)
+    last=$(cache_refresh_time)
     [[ $((now - last)) -ge "${netbox_cache_refresh_time}" ]]
   }
 
@@ -178,11 +200,12 @@ if [[ $netbox_hostname ]]; then
 
     if curl_netbox_request virtual_machines "$tmp" && curl_netbox_request devices "$tmp"; then
       if awk '
-          $1 ~ /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+$/ &&
-          $2 ~ /^([0-9]+\.){3}[0-9]+$/ &&
-          $3 ~ /^[0-9]+$/
           {
-            ok++
+            if ($1 ~ /^[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+$/ &&
+                $2 ~ /^([0-9]+\.){3}[0-9]+$/ &&
+                $3 ~ /^[0-9]+$/ ) {
+              ok=1
+            }
           }
           END {
             exit(ok ? 0 : 1)
