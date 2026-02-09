@@ -306,7 +306,7 @@ done
 echo "";
 if [ $counter2 -eq 2 ] && [ -n "$MATCHVALUE" ]; then
   echo "Connecting to only one matched host $MATCHVALUE...";
-  $0 "$MATCHVALUE";
+  sshconnect "$MATCHVALUE";
   exit 0;
 fi
 if [ -n "$host_connect" ] && [ $counter2 -eq 1 ]; then
