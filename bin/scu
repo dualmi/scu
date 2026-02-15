@@ -46,7 +46,7 @@ if [[ -f $hosts_file ]]; then
   # shellcheck source=/dev/null
   source "$hosts_file"
 else
-  if [[ $1 = "init" ]]; then
+  if [[ ${1:-} = "init" ]]; then
     # At next step example config file will be generated
 cat > "$hosts_file" <<EOL
 # Array entry format:
