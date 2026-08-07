@@ -75,6 +75,69 @@ custom fields from the device or virtual machine `config_context`:
 These fields are **optional** and are only applied when present.
 If a field is not defined, SCU falls back to its default behavior where is user - root, port - 22, args - empty.
 
+
+### SSH overrides
+
+SCU allows you to override the SSH username and SSH arguments for selected hosts using glob patterns in `.scurc`.
+
+#### SSH user override
+
+`SSH_USER_OVERRIDE` is an associative array where the key is a host name pattern and the value is the SSH username that should be used for matching hosts.
+
+```bash
+SSH_USER_OVERRIDE=(
+  ["*"]=""
+  ["*-test-place"]="test-user"
+  ["exact-host"]="admin"
+)
+```
+
+An empty value means that the username received from the original host source will be kept unchanged.
+
+Patterns use Bash glob matching, so you can match hosts by exact name, prefix, suffix or any part of the name:
+
+```bash
+["exact-host"]="admin"
+["prod-*"]="deploy"
+["*-test"]="root"
+["*internal*"]="operator"
+```
+
+If more than one pattern matches a host, SCU uses the most specific pattern, determined by the number of non-wildcard characters in the pattern.
+
+#### SSH arguments override
+
+`SSH_ARGS_OVERRIDE` works in the same way, but changes SSH arguments received from `.scurc`, Ansible inventory or NetBox.
+
+```bash
+SSH_ARGS_OVERRIDE=(
+  ["*"]=""
+  ["*-test"]="-o ProxyCommand='ssh -W %h:%p tunnel@jumphost.example.com'"
+  ["exact-host"]=" -J jumpuser@jumphost.example.com"
+)
+```
+
+The first character of the value determines how the override is applied:
+
+- a value **without a leading space** replaces the existing SSH arguments;
+- a value **with a leading space** is appended to the existing SSH arguments;
+- an empty value leaves the existing SSH arguments unchanged.
+
+For example:
+
+```bash
+["*-test"]="-J jumpuser@jumphost.example.com"
+```
+
+replaces the existing SSH arguments for all hosts ending with `-test`, while:
+
+```bash
+["*-test"]=" -o ServerAliveInterval=30"
+```
+
+appends `-o ServerAliveInterval=30` to the SSH arguments already provided by the host source.
+
+
 ### How to connect
 
 After you done with you hosts list there are three things you can do:

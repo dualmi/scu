@@ -14,7 +14,9 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) ))
   exit 1
 fi
 
-declare -A sshhostlist;
+declare -A sshhostlist
+declare -A SSH_USER_OVERRIDE=()
+declare -A SSH_ARGS_OVERRIDE=()
 : "${ansiblepath:=}"
 : "${netbox_hostname:=}"
 : "${curl_connect_timeout:=3}"
@@ -77,6 +79,25 @@ sshhostlist=(
   [example-line-one]="games server.domain.local 22"
   [example-ext-host]="admin h24.contoso.com 22022 -i ~/.ssh/id_rsa_for_contoso"
 );
+
+# Override the SSH username received from Ansible, NetBox or sshhostlist.
+# If multiple patterns match, the one with the greatest
+# number of non-wildcard characters wins.
+declare -A SSH_USER_OVERRIDE=(
+  ["*"]="" # This is default - username won't be replaced
+  ["*-test-place"]="test-user" # replace user for all hosts with -test-place ending
+)
+
+# Override SSH ARGS for host
+# Value starting with a space is appended to existing SSH arguments.
+# Value without a leading space replaces existing SSH arguments.
+# If multiple patterns match, the one with the greatest
+# number of non-wildcard characters wins.
+declare -A SSH_ARGS_OVERRIDE=(
+  ["*"]="" # Default - SSH ARGS won't be modified
+  ["*-hel"]="-o ProxyCommand='ssh -W %h:%p tunnel@jumphost.example.com'" # SSH ARGS will be REPLACED
+  ["exact-host"]=" -J jumpuser@jumphost.example.com" # SSH ARGS will be APPENDED
+)
 EOL
 
 cat > "$hosts_file.yaml" <<EOL
@@ -251,16 +272,58 @@ for value in "${!sshhostlist[@]}"; do
   array_i=$(( array_i+1 ))
 done
 
+# Returns matched value via REPLY.
+# Exit code 0 - override found.
+# Exit code 1 - no override.
+match_pattern_map() {
+    local -n map="${1:?Map name must be provided}"
+    local host="${2:?Host name must be provided}"
+    local pattern literal
+    local best_score=-1
+    local score
+
+    REPLY=""
+
+    for pattern in "${!map[@]}"; do
+        [[ "$host" == $pattern ]] || continue
+
+        literal=${pattern//\*/}
+        score=${#literal}
+
+        if (( score > best_score )); then
+            best_score=$score
+            REPLY="${map[$pattern]}"
+        fi
+    done
+
+    [[ -n "$REPLY" ]]
+}
+
 # connect to selected host
-function sshconnect() {
-  local host_to_connect=$1
+sshconnect() {
+  local host_to_connect="${1}"
+  local sshhost username address port sshargs
   for sshhost in "${!sshhostlist[@]}"; do
     if [[ $sshhost = "$host_to_connect" ]] || [[ ${array_index[$sshhost]} = "$host_to_connect" ]]; then
-      read -r USERNAME ADDRESS PORT SSHARGS <<<"${sshhostlist[$sshhost]}"
-      PORT=${PORT:-22}
-      SSHARGS=${SSHARGS//\\\"/\"}
+      read -r username address port sshargs <<<"${sshhostlist[$sshhost]}"
+
+      port=${port:-22}
+      sshargs=${sshargs//\\\"/\"}
+
+      if match_pattern_map SSH_USER_OVERRIDE "$sshhost"; then
+        username="$REPLY"
+      fi
+
+      if match_pattern_map SSH_ARGS_OVERRIDE "$sshhost"; then
+        if [[ "$REPLY" == " "* ]]; then
+          sshargs+="$REPLY"
+        else
+          sshargs="$REPLY"
+        fi
+      fi
+
       echo -n "Connecting to $sshhost with command: ";
-      bash -x -c "ssh -p $(printf %q "$PORT") $SSHARGS $(printf %q "$USERNAME@$ADDRESS")"
+      bash -x -c "ssh -p $(printf %q "$port") $sshargs $(printf %q "$username@$address")"
       exit 0;
     fi
   done
