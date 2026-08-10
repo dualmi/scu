@@ -23,6 +23,40 @@ declare -A SSH_ARGS_OVERRIDE=()
 : "${netbox_listing_limit:=1000}"
 : "${netbox_cache_refresh_time:=300}"
 hosts_file="$HOME/.scurc";
+ssh_user_cli=""
+host_connect=""
+
+echo -e "\n\tSSH Connection Utility with predefined hosts list\n";
+
+help() {
+  echo -e "\tAvailable options:"
+  echo -e "\t\t-u <user>\tOverride ssh user from inventory"
+  echo -e "\t\t-h\t\tThis help"
+  echo -e "\t\t<host>\t\tHostname or host number from the inventory to connect"
+  exit 0
+}
+
+while getopts ":u:h" opt; do
+  case "$opt" in
+    u)
+      ssh_user_cli="$OPTARG"
+      ;;
+    h)
+      help
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+    \?)
+      echo "Unknown option: -$OPTARG" >&2
+      exit 1
+      ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
 host_connect="${1:-}"
 
 format_epoch() {
@@ -48,7 +82,7 @@ if [[ -f $hosts_file ]]; then
   # shellcheck source=/dev/null
   source "$hosts_file"
 else
-  if [[ ${1:-} = "init" ]]; then
+  if [[ "$host_connect" = "init" ]]; then
     # At next step example config file will be generated
 cat > "$hosts_file" <<EOL
 # Array entry format:
@@ -314,6 +348,10 @@ sshconnect() {
         username="$REPLY"
       fi
 
+      if [[ -n "$ssh_user_cli" ]]; then
+        username="$ssh_user_cli"
+      fi
+
       if match_pattern_map SSH_ARGS_OVERRIDE "$sshhost"; then
         if [[ "$REPLY" == " "* ]]; then
           sshargs+="$REPLY"
@@ -336,7 +374,7 @@ sshconnect "$host_connect"
 # Usage information and hosts list
 # which will be displayed if no valid host was choosen
 #
-echo -e "\t\tUsage: $0 <host number|host name>\n";
+echo -e "\t\tUsage: $0 [-u username] [host number|host name]\n"
 echo "Available hosts:";
 counter=1;
 counter2=1;
