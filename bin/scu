@@ -240,7 +240,7 @@ if [[ $netbox_hostname ]]; then
       location="/api/dcim/devices/?limit=${netbox_listing_limit}&include=primary_ip"
     fi
     # shellcheck disable=SC2086,SC2090
-    curl --connect-timeout ${curl_connect_timeout} -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname}${location}" \
+    curl --connect-timeout ${curl_connect_timeout} -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname%/}${location}" \
       | jq -r '.results[]
         | select(.primary_ip4.address != null)
         | "\(.name):\(.config_context.ansible_user // "root" ) \(.primary_ip4.address | split("/")[0]) \(.config_context.ansible_port // 22 ) \(.config_context.ansible_ssh_common_args // "")"' | sed 's/[[:space:]]*$//' >> "$outfile" || return 1
