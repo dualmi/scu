@@ -241,9 +241,19 @@ if [[ $netbox_hostname ]]; then
     fi
     # shellcheck disable=SC2086,SC2090
     curl --connect-timeout ${curl_connect_timeout} -fsS -H "Authorization: Token ${NETBOX_TOKEN}" -H 'Accept: application/json' "${netbox_hostname%/}${location}" \
-      | jq -r '.results[]
-        | select(.primary_ip4.address != null)
-        | "\(.name):\(.config_context.ansible_user // "root" ) \(.primary_ip4.address | split("/")[0]) \(.config_context.ansible_port // 22 ) \(.config_context.ansible_ssh_common_args // "")"' | sed 's/[[:space:]]*$//' >> "$outfile" || return 1
+      | jq -r '
+        def netbox_ip_addr:
+          if . == null then null
+          elif type == "string" then .
+          elif type == "object" then .address
+          elif type == "array" then ([.[]? | if type == "string" then . elif type == "object" then .address else empty end][0])
+          else null
+          end;
+        .results[]
+        | (.primary_ip4 | netbox_ip_addr) as $primary_ip
+        | select($primary_ip != null)
+        | ((.primary_ip4.nat_inside | netbox_ip_addr) // (.primary_ip4.nat_outside | netbox_ip_addr)) as $nat_ip
+        | "\(.name):\(.config_context.ansible_user // "root" ) \(($nat_ip // $primary_ip) | split("/")[0]) \(.config_context.ansible_port // 22 ) \(.config_context.ansible_ssh_common_args // "")"' | sed 's/[[:space:]]*$//' >> "$outfile" || return 1
   }
 
   cache_refresh_job() {

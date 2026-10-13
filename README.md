@@ -75,6 +75,9 @@ custom fields from the device or virtual machine `config_context`:
 These fields are **optional** and are only applied when present.
 If a field is not defined, SCU falls back to its default behavior where is user - root, port - 22, args - empty.
 
+When loading hosts from NetBox, SCU uses the primary IPv4 address by default.
+If a NAT-mapped address is present on that primary IPv4 (`nat_inside` or `nat_outside` in the API response), SCU uses the NAT address instead.
+
 
 ### SSH overrides
 
